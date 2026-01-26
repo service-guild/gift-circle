@@ -55,4 +55,10 @@ export type RoomEvent =
       type: "room:updated";
       roomId: string;
       title: string | null;
+    }
+  | {
+      type: "member:ready";
+      roomId: string;
+      membershipId: string;
+      readyForRound: RoomRound | null;
     };

@@ -8,12 +8,12 @@ import {
   resolveIdentity,
 } from "@/lib/identity";
 import {
-  collectMemberCommitments,
-  renderMemberSummaryPdf,
-  renderMemberSummaryMarkdown,
-} from "@/server/export-summary";
+  collectAllCommitments,
+  renderHostSummaryPdf,
+  renderHostSummaryMarkdown,
+} from "@/server/export-host-summary";
 
-const LOG_PREFIX = "[pdf-export]";
+const LOG_PREFIX = "[host-export]";
 
 function sanitizeForFilename(str: string): string {
   return str
@@ -42,7 +42,11 @@ export async function GET(
   context: { params: Promise<{ code: string }> }
 ) {
   const { code } = await context.params;
-  console.log(LOG_PREFIX, "export route request", { roomCode: code });
+  const { searchParams } = new URL(request.url);
+  const format = searchParams.get("format") || "pdf";
+
+  console.log(LOG_PREFIX, "export-all route request", { roomCode: code, format });
+
   if (!code || !isValidRoomCode(code)) {
     return NextResponse.json({ error: "Invalid room code" }, { status: 400 });
   }
@@ -50,10 +54,6 @@ export async function GET(
 
   const cookie = request.cookies.get(IDENTITY_COOKIE_NAME)?.value;
   const identity = await resolveIdentity(cookie);
-  console.log(LOG_PREFIX, "resolved identity", {
-    userId: identity.user.id,
-    shouldSetCookie: identity.shouldSetCookie,
-  });
 
   const room = await prisma.room.findUnique({
     where: { code: roomCode },
@@ -62,7 +62,7 @@ export async function GET(
       code: true,
       title: true,
       currentRound: true,
-      host: true,
+      hostId: true,
     },
   });
 
@@ -74,23 +74,7 @@ export async function GET(
     );
   }
 
-  if (room.currentRound !== "DECISIONS" && room.currentRound !== "SUMMARY") {
-    console.warn(LOG_PREFIX, "room not in decisions or summary round", {
-      roomId: room.id,
-      currentRound: room.currentRound,
-    });
-    return withIdentityCookie(
-      NextResponse.json(
-        {
-          error: "PDF export is only available during the Decisions or Summary round",
-          message: `Room is currently in the ${room.currentRound} round`,
-        },
-        { status: 409 }
-      ),
-      identity
-    );
-  }
-
+  // Check if user is the host
   const membership = await prisma.roomMembership.findUnique({
     where: {
       roomId_userId: {
@@ -114,72 +98,77 @@ export async function GET(
     );
   }
 
-  console.log(LOG_PREFIX, "collecting commitments", {
-    roomId: room.id,
-    membershipId: membership.id,
-  });
-  const commitments = await collectMemberCommitments(room.id, membership.id);
-  console.log(LOG_PREFIX, "commitments collected", {
-    giving: commitments.giving.length,
-    receiving: commitments.receiving.length,
+  if (membership.role !== "HOST") {
+    console.warn(LOG_PREFIX, "user is not host", {
+      roomId: room.id,
+      membershipId: membership.id,
+      role: membership.role,
+    });
+    return withIdentityCookie(
+      NextResponse.json({ error: "Only the host can export all data" }, { status: 403 }),
+      identity
+    );
+  }
+
+  if (room.currentRound !== "DECISIONS" && room.currentRound !== "SUMMARY") {
+    console.warn(LOG_PREFIX, "room not in decisions or summary round", {
+      roomId: room.id,
+      currentRound: room.currentRound,
+    });
+    return withIdentityCookie(
+      NextResponse.json(
+        {
+          error: "Export is only available during the Decisions or Summary round",
+          message: `Room is currently in the ${room.currentRound} round`,
+        },
+        { status: 409 }
+      ),
+      identity
+    );
+  }
+
+  console.log(LOG_PREFIX, "collecting all data", { roomId: room.id });
+  const allData = await collectAllCommitments(room.id);
+  console.log(LOG_PREFIX, "data collected", {
+    commitments: allData.commitments.length,
+    participants: allData.participants.length,
+    shares: allData.shares.length,
   });
 
-  const format = request.nextUrl.searchParams.get("format") ?? "pdf";
-  const userName = sanitizeForFilename(
-    membership.nickname || membership.user.displayName || "participant"
-  );
+  const roomTitle = room.title || "Gift Circle";
+  const filename = sanitizeForFilename(roomTitle);
 
-  // Markdown format
-  if (format === "markdown") {
-    const markdown = renderMemberSummaryMarkdown({
-      member: membership,
-      commitments,
+  if (format === "markdown" || format === "md" || format === "txt") {
+    const markdown = renderHostSummaryMarkdown({
+      roomTitle,
+      data: allData,
       generatedAt: new Date(),
     });
-
-    const filename = room.title
-      ? `gift-circle-${sanitizeForFilename(room.title)}-${userName}.md`
-      : `gift-circle-${userName}.md`;
 
     const response = new NextResponse(markdown, {
       status: 200,
       headers: {
         "Content-Type": "text/markdown; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": `attachment; filename="${filename}-summary.md"`,
         "Cache-Control": "no-store",
       },
     });
 
-    console.log(LOG_PREFIX, "sending markdown response", { filename });
     return withIdentityCookie(response, identity);
   }
 
-  // PDF format (default)
+  // Default to PDF
   let pdfBuffer: Buffer;
   try {
-    console.log(LOG_PREFIX, "rendering PDF", {
-      roomId: room.id,
-      membershipId: membership.id,
-    });
-    pdfBuffer = await renderMemberSummaryPdf({
-      member: membership,
-      commitments,
+    console.log(LOG_PREFIX, "rendering PDF", { roomId: room.id });
+    pdfBuffer = await renderHostSummaryPdf({
+      roomTitle,
+      data: allData,
       generatedAt: new Date(),
     });
-    console.log(LOG_PREFIX, "PDF rendered", {
-      byteLength: pdfBuffer.byteLength,
-    });
+    console.log(LOG_PREFIX, "PDF rendered", { byteLength: pdfBuffer.byteLength });
   } catch (error) {
-    console.error(
-      "Failed to render member summary PDF",
-      {
-        roomId: room.id,
-        roomCode: room.code,
-        membershipId: membership.id,
-      },
-      error
-    );
-
+    console.error("Failed to render host summary PDF", { roomId: room.id }, error);
     return withIdentityCookie(
       NextResponse.json(
         {
@@ -192,23 +181,14 @@ export async function GET(
     );
   }
 
-  const filename = room.title
-    ? `gift-circle-${sanitizeForFilename(room.title)}-${userName}.pdf`
-    : `gift-circle-${userName}.pdf`;
-
   const response = new NextResponse(pdfBuffer as unknown as BodyInit, {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `attachment; filename="${filename}-summary.pdf"`,
       "Cache-Control": "no-store",
       "Content-Length": Buffer.byteLength(pdfBuffer).toString(),
     },
-  });
-
-  console.log(LOG_PREFIX, "sending PDF response", {
-    filename,
-    byteLength: pdfBuffer.byteLength,
   });
 
   return withIdentityCookie(response, identity);

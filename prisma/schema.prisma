@@ -37,19 +37,20 @@ model Room {
 }
 
 model RoomMembership {
-  id        String         @id @default(cuid())
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  roomId    String
-  userId    String
-  role      MembershipRole @default(PARTICIPANT)
-  nickname  String?
-  enjoyment String?
-  room      Room           @relation(fields: [roomId], references: [id])
-  user      User           @relation(fields: [userId], references: [id])
-  offers    Offer[]        @relation("OfferAuthor")
-  desires   Desire[]       @relation("DesireAuthor")
-  claims    Claim[]        @relation("ClaimClaimer")
+  id            String         @id @default(cuid())
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  roomId        String
+  userId        String
+  role          MembershipRole @default(PARTICIPANT)
+  nickname      String?
+  enjoyment     String?
+  readyForRound RoomRound?
+  room          Room           @relation(fields: [roomId], references: [id])
+  user          User           @relation(fields: [userId], references: [id])
+  offers        Offer[]        @relation("OfferAuthor")
+  desires       Desire[]       @relation("DesireAuthor")
+  claims        Claim[]        @relation("ClaimClaimer")
 
   @@unique([roomId, userId])
   @@index([userId])

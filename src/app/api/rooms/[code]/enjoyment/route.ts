@@ -36,9 +36,9 @@ export async function POST(
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
-  if (room.currentRound !== "DECISIONS") {
+  if (room.currentRound !== "DECISIONS" && room.currentRound !== "SUMMARY") {
     return NextResponse.json(
-      { error: "Enjoyment can only be shared during the Decisions round" },
+      { error: "Enjoyment can only be shared during the Decisions or Summary round" },
       { status: 409 }
     );
   }

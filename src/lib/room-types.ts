@@ -9,6 +9,7 @@ export type RoomMember = {
   joinedAt: string;
   isActive: boolean;
   enjoyment: string | null;
+  readyForRound: RoomRound | null;
 };
 
 export type RoomSnapshot = {
@@ -114,6 +115,12 @@ export type RoomRealtimeEvent =
       type: "room:updated";
       roomId: string;
       title: string | null;
+    }
+  | {
+      type: "member:ready";
+      roomId: string;
+      membershipId: string;
+      readyForRound: RoomRound | null;
     };
 
 export type RoomRound = "WAITING" | "OFFERS" | "DESIRES" | "CONNECTIONS" | "DECISIONS" | "SUMMARY";

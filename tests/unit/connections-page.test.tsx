@@ -82,6 +82,8 @@ function buildRoomSnapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot 
         role: "HOST",
         joinedAt: now,
         isActive: true,
+      enjoyment: null,
+      readyForRound: null,
       },
       {
         membershipId: "membership-1",
@@ -91,6 +93,8 @@ function buildRoomSnapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot 
         role: "PARTICIPANT",
         joinedAt: now,
         isActive: true,
+      enjoyment: null,
+      readyForRound: null,
       },
       {
         membershipId: "membership-2",
@@ -100,6 +104,8 @@ function buildRoomSnapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot 
         role: "PARTICIPANT",
         joinedAt: now,
         isActive: true,
+      enjoyment: null,
+      readyForRound: null,
       },
     ],
     updatedAt: now,
@@ -147,7 +153,7 @@ describe("ConnectionsPage", () => {
     render(<ConnectionsPage />);
 
     expect(
-      screen.getByText(/Requests are only available during the Connections round/i)
+      screen.getByText(/Bids are only available during the Bids round/i)
     ).toBeInTheDocument();
   });
 

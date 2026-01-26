@@ -32,6 +32,8 @@ function buildRoomSnapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot 
         role: "HOST",
         joinedAt: now,
         isActive: true,
+      enjoyment: null,
+      readyForRound: null,
       },
       {
         membershipId: "membership-guest",
@@ -41,6 +43,8 @@ function buildRoomSnapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot 
         role: "PARTICIPANT",
         joinedAt: now,
         isActive: true,
+      enjoyment: null,
+      readyForRound: null,
       },
     ],
     offers: [],
@@ -55,7 +59,7 @@ describe("RoomStatus participants overview", () => {
     vi.resetAllMocks();
   });
 
-  it("does not show commitment badges in participant list", () => {
+  it("shows commitment badges for host in DECISIONS round", () => {
     const now = new Date().toISOString();
 
     useRoom.mockReturnValue({
@@ -93,9 +97,8 @@ describe("RoomStatus participants overview", () => {
 
     render(<RoomStatus />);
 
-    // Commitment badges should never be shown in participant list
-    expect(screen.queryByText(/Giving:/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Receiving:/i)).not.toBeInTheDocument();
+    // Host can see commitment badges in DECISIONS round
+    expect(screen.queryByText(/Giving:/i)).toBeInTheDocument();
   });
 
   it("displays participant names correctly", () => {

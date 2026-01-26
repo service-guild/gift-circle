@@ -359,6 +359,9 @@ export default function HomePage() {
           <p className="text-brand-earth-500 leading-relaxed">
             For example: a massage, an hour to be listened to, a friend to go on a road trip, money for a project... U are limited only by your imagination!
           </p>
+          <p className="text-sm text-brand-earth-400 italic">
+            This app works best on a laptop or desktop, but also works on tablets and phones.
+          </p>
         </div>
 
         {/* The Format */}
@@ -460,6 +463,18 @@ export default function HomePage() {
               The Service Guild
             </a>
             . We learned about Gift Circles through the WEALTH community, led by Carolyn Elliot.
+          </p>
+          <p className="text-sm text-brand-earth-500">
+            This project is open source.{" "}
+            <a
+              href="https://github.com/service-guild/gift-circle"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold hover:underline"
+            >
+              Contribute on GitHub
+            </a>
+            .
           </p>
         </div>
       </section>

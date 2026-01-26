@@ -34,6 +34,7 @@ function buildRoom(overrides: Partial<RoomInput> = {}): RoomInput {
         role: "HOST",
         nickname: "Host",
         enjoyment: null,
+        readyForRound: null,
         createdAt: now,
         updatedAt: now,
         user: {
@@ -50,6 +51,7 @@ function buildRoom(overrides: Partial<RoomInput> = {}): RoomInput {
         role: "PARTICIPANT",
         nickname: "Guest",
         enjoyment: null,
+        readyForRound: null,
         createdAt: new Date("2025-01-01T00:05:00.000Z"),
         updatedAt: now,
         user: {

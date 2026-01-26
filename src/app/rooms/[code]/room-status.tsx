@@ -310,7 +310,8 @@ export default function RoomStatus() {
   }, [room.desires, desireSort, getMemberDisplayName, filterByMembershipId]);
 
   const commitmentPreview = useMemo(() => buildCommitmentPreview(room), [room]);
-  const showCommitments = false;
+  // Show commitments for host once we're in DECISIONS round or later
+  const showCommitments = isHost && roundIndex >= ROOM_ROUND_SEQUENCE.indexOf("DECISIONS");
   const showSecondaryColumn = offersEnabled || desiresEnabled;
 
   const offerSortControls = (

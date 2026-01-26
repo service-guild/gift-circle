@@ -5,9 +5,15 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRoom } from "@/app/rooms/[code]/room-context";
 import { buildCommitmentPreview } from "@/lib/room-commitments";
 
-type PdfState =
+type DownloadState =
   | { status: "idle" }
-  | { status: "loading" }
+  | { status: "loading"; format: "pdf" | "markdown" }
+  | { status: "success" }
+  | { status: "error"; message: string };
+
+type EnjoymentState =
+  | { status: "idle" }
+  | { status: "saving" }
   | { status: "success" }
   | { status: "error"; message: string };
 
@@ -19,9 +25,18 @@ function sanitizeForFilename(str: string): string {
     .slice(0, 50);
 }
 
+type HostDownloadState =
+  | { status: "idle" }
+  | { status: "loading"; format: "pdf" | "markdown" }
+  | { status: "success" }
+  | { status: "error"; message: string };
+
 export default function SummaryPage() {
-  const { room, membershipId } = useRoom();
-  const [pdfState, setPdfState] = useState<PdfState>({ status: "idle" });
+  const { room, membershipId, refresh, isHost } = useRoom();
+  const [downloadState, setDownloadState] = useState<DownloadState>({ status: "idle" });
+  const [enjoymentDraft, setEnjoymentDraft] = useState("");
+  const [enjoymentState, setEnjoymentState] = useState<EnjoymentState>({ status: "idle" });
+  const [hostDownloadState, setHostDownloadState] = useState<HostDownloadState>({ status: "idle" });
 
   const isSummaryRound = room.currentRound === "SUMMARY";
 
@@ -31,6 +46,8 @@ export default function SummaryPage() {
     if (!membershipId) return null;
     return room.members.find((m) => m.membershipId === membershipId) ?? null;
   }, [room.members, membershipId]);
+
+  const hasSubmittedEnjoyment = Boolean(currentMember?.enjoyment);
 
   const hasAcceptedCommitment = useMemo(() => {
     if (!membershipId) {
@@ -45,28 +62,28 @@ export default function SummaryPage() {
     );
   }, [commitmentPreview, membershipId]);
 
-  const handleDownloadPdf = useCallback(async () => {
-    if (!membershipId || pdfState.status === "loading" || !hasAcceptedCommitment) {
+  const handleDownload = useCallback(async (format: "pdf" | "markdown") => {
+    if (!membershipId || downloadState.status === "loading" || !hasAcceptedCommitment) {
       return;
     }
 
-    setPdfState({ status: "loading" });
+    setDownloadState({ status: "loading", format });
 
     try {
-      const response = await fetch(`/api/rooms/${room.code}/export`, {
+      const response = await fetch(`/api/rooms/${room.code}/export?format=${format}`, {
         headers: {
-          Accept: "application/pdf",
+          Accept: format === "pdf" ? "application/pdf" : "text/markdown",
         },
       });
 
       if (!response.ok) {
         const payload = await response
           .json()
-          .catch(() => ({ message: "Failed to generate PDF." }));
+          .catch(() => ({ message: `Failed to generate ${format.toUpperCase()}.` }));
         const message =
           (payload as { message?: string; error?: string }).message ??
           (payload as { error?: string }).error ??
-          "Failed to generate PDF.";
+          `Failed to generate ${format.toUpperCase()}.`;
         throw new Error(message);
       }
 
@@ -75,31 +92,120 @@ export default function SummaryPage() {
       const link = document.createElement("a");
       link.href = url;
       const userName = sanitizeForFilename(currentMember?.nickname || currentMember?.displayName || "participant");
+      const ext = format === "pdf" ? "pdf" : "md";
       const filename = room.title
-        ? `gift-circle-${sanitizeForFilename(room.title)}-${userName}.pdf`
-        : `gift-circle-${userName}.pdf`;
+        ? `gift-circle-${sanitizeForFilename(room.title)}-${userName}.${ext}`
+        : `gift-circle-${userName}.${ext}`;
       link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      setPdfState({ status: "success" });
+      setDownloadState({ status: "success" });
     } catch (err) {
-      const message = (err as Error)?.message ?? "Failed to generate PDF.";
-      setPdfState({ status: "error", message });
+      const message = (err as Error)?.message ?? `Failed to generate ${format.toUpperCase()}.`;
+      setDownloadState({ status: "error", message });
     }
-  }, [membershipId, pdfState.status, room.code, hasAcceptedCommitment]);
+  }, [membershipId, downloadState.status, room.code, room.title, hasAcceptedCommitment, currentMember]);
 
   useEffect(() => {
-    if (pdfState.status === "success" || pdfState.status === "error") {
+    if (downloadState.status === "success" || downloadState.status === "error") {
       const timer = window.setTimeout(() => {
-        setPdfState({ status: "idle" });
+        setDownloadState({ status: "idle" });
       }, 4000);
       return () => window.clearTimeout(timer);
     }
     return undefined;
-  }, [pdfState.status]);
+  }, [downloadState.status]);
+
+  useEffect(() => {
+    if (hostDownloadState.status === "success" || hostDownloadState.status === "error") {
+      const timer = window.setTimeout(() => {
+        setHostDownloadState({ status: "idle" });
+      }, 4000);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [hostDownloadState.status]);
+
+  const handleHostDownload = useCallback(async (format: "pdf" | "markdown") => {
+    if (!membershipId || !isHost || hostDownloadState.status === "loading") {
+      return;
+    }
+
+    setHostDownloadState({ status: "loading", format });
+
+    try {
+      const response = await fetch(
+        `/api/rooms/${room.code}/export-all?format=${format}`,
+        { headers: { Accept: format === "pdf" ? "application/pdf" : "text/markdown" } }
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ message: "Failed to generate export." }));
+        const message =
+          (payload as { message?: string; error?: string }).message ??
+          (payload as { error?: string }).error ??
+          "Failed to generate export.";
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const roomName = sanitizeForFilename(room.title || "gift-circle");
+      const ext = format === "pdf" ? "pdf" : "md";
+      link.download = `${roomName}-summary.${ext}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      setHostDownloadState({ status: "success" });
+    } catch (err) {
+      const message = (err as Error)?.message ?? "Failed to generate export.";
+      setHostDownloadState({ status: "error", message });
+    }
+  }, [membershipId, isHost, hostDownloadState.status, room.code, room.title]);
+
+  const handleSubmitEnjoyment = useCallback(async () => {
+    if (!membershipId || enjoymentState.status === "saving") {
+      return;
+    }
+
+    const trimmedEnjoyment = enjoymentDraft.trim();
+    if (!trimmedEnjoyment) {
+      return;
+    }
+
+    setEnjoymentState({ status: "saving" });
+
+    try {
+      const response = await fetch(`/api/rooms/${room.code}/enjoyment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enjoyment: trimmedEnjoyment }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ message: "Failed to save." }));
+        throw new Error(
+          (payload as { message?: string; error?: string }).message ??
+            (payload as { error?: string }).error ??
+            "Failed to save."
+        );
+      }
+
+      setEnjoymentState({ status: "success" });
+      setEnjoymentDraft("");
+      await refresh();
+    } catch (err) {
+      const message = (err as Error)?.message ?? "Failed to save.";
+      setEnjoymentState({ status: "error", message });
+    }
+  }, [membershipId, enjoymentState.status, enjoymentDraft, room.code, refresh]);
 
   const getMemberDisplayName = useCallback(
     (memberId: string) => {
@@ -199,31 +305,55 @@ export default function SummaryPage() {
             Summary
           </h1>
           {membershipId ? (
-            <div className="flex flex-col items-center gap-1 md:items-end">
-              <button
-                type="button"
-                className={`btn-outline text-xs ${
-                  !hasAcceptedCommitment || pdfState.status === "loading"
-                    ? "cursor-not-allowed opacity-50"
-                    : ""
-                }`}
-                onClick={handleDownloadPdf}
-                disabled={pdfState.status === "loading" || !hasAcceptedCommitment}
-                title={
-                  !hasAcceptedCommitment
-                    ? "Available after you have at least one accepted commitment."
-                    : undefined
-                }
-              >
-                {pdfState.status === "loading"
-                  ? "Preparing PDF…"
-                  : "Download my commitments"}
-              </button>
-              {pdfState.status === "success" ? (
+            <div className="flex flex-col items-center gap-2 md:items-end">
+              <span className="text-xs font-medium" style={{ color: "var(--earth-500)" }}>
+                Download my commitments:
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className={`btn-outline text-xs ${
+                    !hasAcceptedCommitment || downloadState.status === "loading"
+                      ? "cursor-not-allowed opacity-50"
+                      : ""
+                  }`}
+                  onClick={() => handleDownload("pdf")}
+                  disabled={downloadState.status === "loading" || !hasAcceptedCommitment}
+                  title={
+                    !hasAcceptedCommitment
+                      ? "Available after you have at least one accepted commitment."
+                      : undefined
+                  }
+                >
+                  {downloadState.status === "loading" && downloadState.format === "pdf"
+                    ? "Preparing…"
+                    : "PDF"}
+                </button>
+                <button
+                  type="button"
+                  className={`btn-outline text-xs ${
+                    !hasAcceptedCommitment || downloadState.status === "loading"
+                      ? "cursor-not-allowed opacity-50"
+                      : ""
+                  }`}
+                  onClick={() => handleDownload("markdown")}
+                  disabled={downloadState.status === "loading" || !hasAcceptedCommitment}
+                  title={
+                    !hasAcceptedCommitment
+                      ? "Available after you have at least one accepted commitment."
+                      : undefined
+                  }
+                >
+                  {downloadState.status === "loading" && downloadState.format === "markdown"
+                    ? "Preparing…"
+                    : "Markdown"}
+                </button>
+              </div>
+              {downloadState.status === "success" ? (
                 <span className="text-xs" style={{ color: "var(--green-600)" }}>Download started.</span>
               ) : null}
-              {pdfState.status === "error" ? (
-                <span className="text-xs text-red-600">{pdfState.message}</span>
+              {downloadState.status === "error" ? (
+                <span className="text-xs text-red-600">{downloadState.message}</span>
               ) : null}
             </div>
           ) : null}
@@ -233,7 +363,126 @@ export default function SummaryPage() {
             The summary will be available once the host advances the room to the Summary round.
           </p>
         ) : null}
+
+        {/* Host Download Section */}
+        {isSummaryRound && isHost && (
+          <div
+            className="rounded-xl p-4"
+            style={{ background: "var(--earth-50)", border: "1px solid var(--earth-200)" }}
+          >
+            <p className="text-sm font-semibold mb-3" style={{ color: "var(--earth-700)" }}>
+              Host: Download Everything
+            </p>
+            <p className="text-xs mb-3" style={{ color: "var(--earth-500)" }}>
+              Export all commitments, statistics, and shared experiences.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn-outline text-xs"
+                onClick={() => handleHostDownload("pdf")}
+                disabled={hostDownloadState.status === "loading"}
+              >
+                {hostDownloadState.status === "loading" && hostDownloadState.format === "pdf"
+                  ? "Preparing…"
+                  : "PDF"}
+              </button>
+              <button
+                type="button"
+                className="btn-outline text-xs"
+                onClick={() => handleHostDownload("markdown")}
+                disabled={hostDownloadState.status === "loading"}
+              >
+                {hostDownloadState.status === "loading" && hostDownloadState.format === "markdown"
+                  ? "Preparing…"
+                  : "Markdown"}
+              </button>
+            </div>
+            {hostDownloadState.status === "success" ? (
+              <p className="mt-2 text-xs" style={{ color: "var(--green-600)" }}>Download started.</p>
+            ) : null}
+            {hostDownloadState.status === "error" ? (
+              <p className="mt-2 text-xs text-red-600">{hostDownloadState.message}</p>
+            ) : null}
+          </div>
+        )}
       </header>
+
+      {/* Share Your Experience - Prominent at the top */}
+      {isSummaryRound && membershipId ? (
+        <section
+          className="rounded-xl p-6"
+          style={{
+            background: "linear-gradient(135deg, var(--gold-50), var(--earth-50))",
+            border: "2px solid var(--gold-200)"
+          }}
+          aria-labelledby="share-experience-heading"
+        >
+          <div className="space-y-4">
+            <div>
+              <h2 id="share-experience-heading" className="font-display text-2xl font-semibold" style={{ color: "var(--earth-900)" }}>
+                Share Your Experience
+              </h2>
+              <p className="mt-2 text-sm" style={{ color: "var(--earth-600)" }}>
+                What did you enjoy most about this Gift Circle?
+              </p>
+              <p
+                className="mt-2 flex items-center gap-2 text-xs font-medium"
+                style={{ color: "var(--gold-700)" }}
+              >
+                <span
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full text-xs"
+                  style={{ background: "var(--gold-100)" }}
+                >
+                  !
+                </span>
+                Your response will be shared with the group and your name will be attached.
+              </p>
+            </div>
+
+            {hasSubmittedEnjoyment ? (
+              <div
+                className="rounded-xl p-4"
+                style={{
+                  background: "var(--green-50)",
+                  border: "2px solid var(--green-200)"
+                }}
+              >
+                <p className="text-sm font-medium" style={{ color: "var(--green-700)" }}>You shared:</p>
+                <p className="mt-2 text-sm whitespace-pre-line" style={{ color: "var(--earth-700)" }}>
+                  {currentMember?.enjoyment}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <textarea
+                  className="input-field w-full"
+                  rows={4}
+                  placeholder="Share what you enjoyed about this experience..."
+                  value={enjoymentDraft}
+                  onChange={(e) => setEnjoymentDraft(e.target.value)}
+                  disabled={enjoymentState.status === "saving"}
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="btn-gold"
+                    onClick={handleSubmitEnjoyment}
+                    disabled={
+                      enjoymentState.status === "saving" || !enjoymentDraft.trim()
+                    }
+                  >
+                    {enjoymentState.status === "saving" ? "Sharing..." : "Share with Group"}
+                  </button>
+                  {enjoymentState.status === "error" ? (
+                    <span className="text-xs text-red-600">{enjoymentState.message}</span>
+                  ) : null}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       {isSummaryRound ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -308,11 +557,8 @@ export default function SummaryPage() {
         >
           <div>
             <h2 id="shared-experiences-heading" className="section-heading">
-              Shared Experiences
+              What Everyone Shared
             </h2>
-            <p className="mt-1 text-sm" style={{ color: "var(--earth-600)" }}>
-              What did you enjoy most about this Gift Circle?
-            </p>
           </div>
           <ul className="space-y-4">
             {allEnjoyments.map((entry) => (

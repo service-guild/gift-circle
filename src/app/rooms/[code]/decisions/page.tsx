@@ -10,9 +10,9 @@ type ActionState =
   | { status: "idle" }
   | { status: "updating"; claimId: string; decision: "ACCEPTED" | "DECLINED" };
 
-type PdfState =
+type DownloadState =
   | { status: "idle" }
-  | { status: "loading" }
+  | { status: "loading"; format: "pdf" | "markdown" }
   | { status: "success" }
   | { status: "error"; message: string };
 
@@ -41,7 +41,7 @@ export default function DecisionsPage() {
   const { room, membershipId, refresh } = useRoom();
   const [actionState, setActionState] = useState<ActionState>({ status: "idle" });
   const [error, setError] = useState<string | null>(null);
-  const [pdfState, setPdfState] = useState<PdfState>({ status: "idle" });
+  const [downloadState, setDownloadState] = useState<DownloadState>({ status: "idle" });
   const [enjoymentDraft, setEnjoymentDraft] = useState("");
   const [enjoymentState, setEnjoymentState] = useState<EnjoymentState>({ status: "idle" });
 
@@ -189,28 +189,28 @@ export default function DecisionsPage() {
     [actionState]
   );
 
-  const handleDownloadPdf = useCallback(async () => {
-    if (!membershipId || pdfState.status === "loading" || !hasAcceptedCommitment) {
+  const handleDownload = useCallback(async (format: "pdf" | "markdown") => {
+    if (!membershipId || downloadState.status === "loading" || !hasAcceptedCommitment) {
       return;
     }
 
-    setPdfState({ status: "loading" });
+    setDownloadState({ status: "loading", format });
 
     try {
-      const response = await fetch(`/api/rooms/${room.code}/export`, {
+      const response = await fetch(`/api/rooms/${room.code}/export?format=${format}`, {
         headers: {
-          Accept: "application/pdf",
+          Accept: format === "pdf" ? "application/pdf" : "text/markdown",
         },
       });
 
       if (!response.ok) {
         const payload = await response
           .json()
-          .catch(() => ({ message: "Failed to generate PDF." }));
+          .catch(() => ({ message: `Failed to generate ${format.toUpperCase()}.` }));
         const message =
           (payload as { message?: string; error?: string }).message ??
           (payload as { error?: string }).error ??
-          "Failed to generate PDF.";
+          `Failed to generate ${format.toUpperCase()}.`;
         throw new Error(message);
       }
 
@@ -219,31 +219,32 @@ export default function DecisionsPage() {
       const link = document.createElement("a");
       link.href = url;
       const userName = sanitizeForFilename(currentMember?.nickname || currentMember?.displayName || "participant");
+      const ext = format === "pdf" ? "pdf" : "md";
       const filename = room.title
-        ? `gift-circle-${sanitizeForFilename(room.title)}-${userName}.pdf`
-        : `gift-circle-${userName}.pdf`;
+        ? `gift-circle-${sanitizeForFilename(room.title)}-${userName}.${ext}`
+        : `gift-circle-${userName}.${ext}`;
       link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      setPdfState({ status: "success" });
+      setDownloadState({ status: "success" });
     } catch (err) {
-      const message = (err as Error)?.message ?? "Failed to generate PDF.";
-      setPdfState({ status: "error", message });
+      const message = (err as Error)?.message ?? `Failed to generate ${format.toUpperCase()}.`;
+      setDownloadState({ status: "error", message });
     }
-  }, [membershipId, pdfState.status, room.code, hasAcceptedCommitment]);
+  }, [membershipId, downloadState.status, room.code, room.title, hasAcceptedCommitment, currentMember]);
 
   useEffect(() => {
-    if (pdfState.status === "success" || pdfState.status === "error") {
+    if (downloadState.status === "success" || downloadState.status === "error") {
       const timer = window.setTimeout(() => {
-        setPdfState({ status: "idle" });
+        setDownloadState({ status: "idle" });
       }, 4000);
       return () => window.clearTimeout(timer);
     }
     return undefined;
-  }, [pdfState.status]);
+  }, [downloadState.status]);
 
   const handleSubmitEnjoyment = useCallback(async () => {
     if (!membershipId || enjoymentState.status === "saving") {
@@ -288,7 +289,7 @@ export default function DecisionsPage() {
   ) => {
     const { ownerName, direction } = options;
     if (claims.length === 0) {
-      return <p className="text-sm" style={{ color: "var(--earth-500)" }}>No requests for this entry.</p>;
+      return <p className="text-sm" style={{ color: "var(--earth-500)" }}>No bids for this entry.</p>;
     }
 
     return (
@@ -358,7 +359,7 @@ export default function DecisionsPage() {
           <div className="max-w-2xl space-y-3">
             <h1 className="font-display text-3xl font-semibold" style={{ color: "var(--earth-900)" }}>Decisions</h1>
             <p className="text-sm" style={{ color: "var(--earth-600)" }}>
-              Accept or decline your incoming requests.
+              Accept or decline your incoming bids.
             </p>
           </div>
           <div className="flex w-full flex-col items-start gap-2 md:w-auto md:items-end">
@@ -370,31 +371,55 @@ export default function DecisionsPage() {
               </div>
             ) : null}
             {membershipId ? (
-              <div className="flex flex-col items-start gap-1 md:items-end">
-                <button
-                  type="button"
-                  className={`btn-outline text-xs ${
-                    !hasAcceptedCommitment || pdfState.status === "loading"
-                      ? "cursor-not-allowed opacity-50"
-                      : ""
-                  } ${!hasAcceptedCommitment || pdfState.status === "loading" ? "hover:text-brand-ink-900 hover:border-brand-ink-500" : ""}`}
-                  onClick={handleDownloadPdf}
-                  disabled={pdfState.status === "loading" || !hasAcceptedCommitment}
-                  title={
-                    !hasAcceptedCommitment
-                      ? "Available after you have at least one accepted commitment."
-                      : undefined
-                  }
-                >
-                  {pdfState.status === "loading"
-                    ? "Preparing PDF…"
-                    : "Download my commitments"}
-                </button>
-                {pdfState.status === "success" ? (
+              <div className="flex flex-col items-start gap-2 md:items-end">
+                <span className="text-xs font-medium" style={{ color: "var(--earth-500)" }}>
+                  Download my commitments:
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className={`btn-outline text-xs ${
+                      !hasAcceptedCommitment || downloadState.status === "loading"
+                        ? "cursor-not-allowed opacity-50"
+                        : ""
+                    }`}
+                    onClick={() => handleDownload("pdf")}
+                    disabled={downloadState.status === "loading" || !hasAcceptedCommitment}
+                    title={
+                      !hasAcceptedCommitment
+                        ? "Available after you have at least one accepted commitment."
+                        : undefined
+                    }
+                  >
+                    {downloadState.status === "loading" && downloadState.format === "pdf"
+                      ? "Preparing…"
+                      : "PDF"}
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn-outline text-xs ${
+                      !hasAcceptedCommitment || downloadState.status === "loading"
+                        ? "cursor-not-allowed opacity-50"
+                        : ""
+                    }`}
+                    onClick={() => handleDownload("markdown")}
+                    disabled={downloadState.status === "loading" || !hasAcceptedCommitment}
+                    title={
+                      !hasAcceptedCommitment
+                        ? "Available after you have at least one accepted commitment."
+                        : undefined
+                    }
+                  >
+                    {downloadState.status === "loading" && downloadState.format === "markdown"
+                      ? "Preparing…"
+                      : "Markdown"}
+                  </button>
+                </div>
+                {downloadState.status === "success" ? (
                   <span className="text-xs" style={{ color: "var(--green-600)" }}>Download started.</span>
                 ) : null}
-                {pdfState.status === "error" ? (
-                  <span className="text-xs text-red-600">{pdfState.message}</span>
+                {downloadState.status === "error" ? (
+                  <span className="text-xs text-red-600">{downloadState.message}</span>
                 ) : null}
               </div>
             ) : null}
@@ -414,7 +439,7 @@ export default function DecisionsPage() {
               color: "var(--earth-600)"
             }}
           >
-            Join the room to manage requests made on your offers and desires.
+            Join the room to manage bids made on your offers and desires.
           </p>
         ) : null}
       </header>

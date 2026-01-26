@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 
 import { useRoom } from "@/app/rooms/[code]/room-context";
 import { getAdvanceLabel, getRoundInfo, ROOM_ROUND_SEQUENCE } from "@/lib/room-round";
-import { advanceRoomRound } from "@/lib/rooms-client";
+import { advanceRoomRound, toggleReadyApi } from "@/lib/rooms-client";
 
 const OFFERS_INDEX = ROOM_ROUND_SEQUENCE.indexOf("OFFERS");
 const DESIRES_INDEX = ROOM_ROUND_SEQUENCE.indexOf("DESIRES");
@@ -25,7 +25,7 @@ const NAV_LINKS: NavLink[] = [
   { href: "", label: "Overview", minRoundIndex: OFFERS_INDEX },
   { href: "offers", label: "My Offers", minRoundIndex: OFFERS_INDEX },
   { href: "desires", label: "My Desires", minRoundIndex: DESIRES_INDEX },
-  { href: "connections", label: "Requests", minRoundIndex: CONNECTIONS_INDEX },
+  { href: "connections", label: "Bids", minRoundIndex: CONNECTIONS_INDEX },
   { href: "decisions", label: "Decisions", minRoundIndex: DECISIONS_INDEX },
   { href: "summary", label: "Summary", minRoundIndex: SUMMARY_INDEX },
 ];
@@ -40,6 +40,8 @@ export function RoomShell({ children }: { children: ReactNode }) {
   const [titleDraft, setTitleDraft] = useState(room.title ?? "");
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
+  const [isTogglingReady, setIsTogglingReady] = useState(false);
+  const [showReadyDetails, setShowReadyDetails] = useState(false);
 
   const currentPath = pathname ?? "";
   const roundInfo = getRoundInfo(room.currentRound);
@@ -59,6 +61,25 @@ export function RoomShell({ children }: { children: ReactNode }) {
     () => NAV_LINKS.filter((link) => roundIndex >= link.minRoundIndex),
     [roundIndex]
   );
+
+  const currentMember = useMemo(() => {
+    if (!membershipId) return null;
+    return room.members.find((m) => m.membershipId === membershipId) ?? null;
+  }, [membershipId, room.members]);
+
+  const isReadyForCurrentRound = currentMember?.readyForRound === room.currentRound;
+
+  const readyMembers = useMemo(() => {
+    return room.members.filter((m) => m.readyForRound === room.currentRound);
+  }, [room.members, room.currentRound]);
+
+  const notReadyMembers = useMemo(() => {
+    return room.members.filter((m) => m.readyForRound !== room.currentRound);
+  }, [room.members, room.currentRound]);
+
+  const readyCount = readyMembers.length;
+  const totalMembers = room.members.length;
+  const allReady = readyCount === totalMembers && totalMembers > 0;
 
   const membershipQuery = membershipId ? `?membershipId=${membershipId}` : "";
 
@@ -151,6 +172,31 @@ export function RoomShell({ children }: { children: ReactNode }) {
       setIsAdvancing(false);
     }
   };
+
+  const handleToggleReady = async () => {
+    if (isTogglingReady || !membershipId) {
+      return;
+    }
+
+    try {
+      setIsTogglingReady(true);
+      await toggleReadyApi(room.code, !isReadyForCurrentRound);
+      await refresh();
+    } catch (error) {
+      console.error("Failed to toggle ready status", error);
+    } finally {
+      setIsTogglingReady(false);
+    }
+  };
+
+  const getMemberDisplayName = (memberId: string) => {
+    const member = room.members.find((m) => m.membershipId === memberId);
+    if (!member) return "Unknown";
+    return member.nickname?.trim() || member.displayName?.trim() || (member.role === "HOST" ? "Host" : "Participant");
+  };
+
+  // Show ready indicator for rounds where it makes sense (not WAITING or SUMMARY)
+  const showReadyIndicator = room.currentRound !== "WAITING" && room.currentRound !== "SUMMARY";
 
   return (
     <div className="min-h-screen">
@@ -253,6 +299,102 @@ export function RoomShell({ children }: { children: ReactNode }) {
                 >
                   {isAdvancing ? "Advancing…" : getAdvanceLabel(room.nextRound)}
                 </button>
+              </div>
+            )}
+
+            {/* Ready Indicator */}
+            {showReadyIndicator && membershipId && (
+              <div className="space-y-3 pt-2">
+                {/* Ready toggle button for current user */}
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleToggleReady}
+                    disabled={isTogglingReady}
+                    className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${
+                      isReadyForCurrentRound
+                        ? "bg-[var(--green-100)] text-[var(--green-700)] hover:bg-[var(--green-200)]"
+                        : "bg-[var(--earth-100)] text-[var(--earth-600)] hover:bg-[var(--earth-200)]"
+                    }`}
+                  >
+                    {isTogglingReady
+                      ? "Updating..."
+                      : isReadyForCurrentRound
+                        ? `✓  Done with ${roundInfo.title}`
+                        : `I'm done with ${roundInfo.title}`}
+                  </button>
+                </div>
+
+                {/* Ready status summary - HOST ONLY */}
+                {isHost && (
+                  <div className="flex flex-col items-center gap-2">
+                    {/* All ready celebration indicator */}
+                    {allReady && (
+                      <div
+                        className="mb-1 animate-pulse select-none rounded-full px-4 py-2 text-sm font-bold"
+                        style={{
+                          background: "linear-gradient(135deg, var(--green-100), var(--gold-100))",
+                          color: "var(--green-700)",
+                          border: "2px solid var(--green-300)",
+                          boxShadow: "0 0 12px var(--green-200)",
+                        }}
+                      >
+                        ✨ Everyone is ready! ✨
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setShowReadyDetails(!showReadyDetails)}
+                      className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+                        allReady
+                          ? "bg-[var(--green-100)] text-[var(--green-700)]"
+                          : "bg-[var(--earth-100)] text-[var(--earth-600)]"
+                      }`}
+                    >
+                      {readyCount}/{totalMembers} ready {showReadyDetails ? "▲" : "▼"}
+                    </button>
+
+                    {/* Expandable details */}
+                    {showReadyDetails && (
+                      <div
+                        className="w-full max-w-xs rounded-xl p-3 text-left text-xs"
+                        style={{ background: "var(--earth-50)", border: "1px solid var(--earth-200)" }}
+                      >
+                        {readyMembers.length > 0 && (
+                          <div className="mb-2">
+                            <p className="font-semibold" style={{ color: "var(--green-700)" }}>
+                              Ready ({readyMembers.length}):
+                            </p>
+                            <ul className="mt-1 space-y-0.5" style={{ color: "var(--earth-700)" }}>
+                              {readyMembers.map((m) => (
+                                <li key={m.membershipId}>
+                                  {getMemberDisplayName(m.membershipId)}
+                                  {m.membershipId === membershipId && " (you)"}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {notReadyMembers.length > 0 && (
+                          <div>
+                            <p className="font-semibold" style={{ color: "var(--earth-500)" }}>
+                              Still working ({notReadyMembers.length}):
+                            </p>
+                            <ul className="mt-1 space-y-0.5" style={{ color: "var(--earth-500)" }}>
+                              {notReadyMembers.map((m) => (
+                                <li key={m.membershipId}>
+                                  {getMemberDisplayName(m.membershipId)}
+                                  {m.membershipId === membershipId && " (you)"}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

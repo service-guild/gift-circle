@@ -75,6 +75,7 @@ export function buildSnapshot(
       joinedAt: membership.createdAt.toISOString(),
       isActive: activeMemberships.has(membership.id),
       enjoyment: membership.enjoyment,
+      readyForRound: membership.readyForRound,
     }))
   );
 

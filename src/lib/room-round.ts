@@ -37,17 +37,17 @@ const ROUND_INFO: Record<RoomRound, RoomRoundInfo> = {
   },
   CONNECTIONS: {
     key: "CONNECTIONS",
-    title: "Requests",
+    title: "Bids",
     description:
-      "Participants make requests to receive offers or to fulfill desires from others.",
-    guidance: "Review others' offers and desires and send requests.",
+      "Participants place bids to receive offers or to fulfill desires from others.",
+    guidance: "Review others' offers and desires and place bids.",
   },
   DECISIONS: {
     key: "DECISIONS",
     title: "Decisions",
     description:
-      "Participants review incoming requests and decide which to accept or decline.",
-    guidance: "Review your pending requests and make decisions.",
+      "Participants review incoming bids and decide which to accept or decline.",
+    guidance: "Review your pending bids and make decisions.",
   },
   SUMMARY: {
     key: "SUMMARY",

@@ -71,6 +71,8 @@ function buildRoomSnapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot 
         role: "PARTICIPANT",
         joinedAt: now,
         isActive: true,
+      enjoyment: null,
+      readyForRound: null,
       },
       {
         membershipId: "membership-2",
@@ -80,6 +82,8 @@ function buildRoomSnapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot 
         role: "PARTICIPANT",
         joinedAt: now,
         isActive: true,
+      enjoyment: null,
+      readyForRound: null,
       },
     ],
     updatedAt: now,
@@ -205,7 +209,7 @@ describe("DecisionsPage", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
-  it("shows the commitments download button in the Decisions round", () => {
+  it("shows the commitments download buttons in the Decisions round", () => {
     useRoom.mockReturnValue({
       room: buildRoomSnapshot(),
       membershipId: "membership-1",
@@ -216,8 +220,10 @@ describe("DecisionsPage", () => {
 
     render(<DecisionsPage />);
 
-    const button = screen.getByRole("button", { name: /download my commitments/i });
-    expect(button).toBeDisabled();
+    const pdfButton = screen.getByRole("button", { name: /^PDF$/i });
+    const markdownButton = screen.getByRole("button", { name: /^Markdown$/i });
+    expect(pdfButton).toBeDisabled();
+    expect(markdownButton).toBeDisabled();
   });
 
   it("triggers PDF download workflow", async () => {
@@ -264,12 +270,12 @@ describe("DecisionsPage", () => {
 
     render(<DecisionsPage />);
 
-    const button = screen.getByRole("button", { name: /download my commitments/i });
-    expect(button).not.toBeDisabled();
-    fireEvent.click(button);
+    const pdfButton = screen.getByRole("button", { name: /^PDF$/i });
+    expect(pdfButton).not.toBeDisabled();
+    fireEvent.click(pdfButton);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/api/rooms/gift-generosity/export", {
+      expect(mockFetch).toHaveBeenCalledWith("/api/rooms/gift-generosity/export?format=pdf", {
         headers: { Accept: "application/pdf" },
       });
 

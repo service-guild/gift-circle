@@ -305,4 +305,20 @@ export async function decideClaimApi(
   return updateClaimStatusApi(code, claimId, { status }, "Failed to update claim");
 }
 
+export async function toggleReadyApi(code: string, ready: boolean) {
+  const response = await fetch(`/api/rooms/${code}/ready`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ready }),
+  });
+
+  if (!response.ok) {
+    throw await buildApiError(response, "Failed to toggle ready status");
+  }
+
+  return (await response.json()) as { success: boolean; readyForRound: string | null };
+}
+
 export type { RoomSnapshot, RoomMember, OfferSummary, DesireSummary, ClaimSummary };

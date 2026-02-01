@@ -30,7 +30,19 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Gift Circle",
   description:
-    "Host gift circles, share offers and desires, and coordinate real-time generosity.",
+    "An app for facilitating or participating in Gift Circles—cultivating generosity and abundance in community!",
+  openGraph: {
+    title: "Gift Circle",
+    description:
+      "An app for facilitating or participating in Gift Circles—cultivating generosity and abundance in community!",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Gift Circle",
+    description:
+      "An app for facilitating or participating in Gift Circles—cultivating generosity and abundance in community!",
+  },
 };
 
 export default function RootLayout({

@@ -462,7 +462,7 @@ export default function HomePage() {
             >
               The Service Guild
             </a>
-            . We learned about Gift Circles through the WEALTH community, led by Carolyn Elliot.
+            . We learned about Gift Circles through the WEALTH community, led by Carolyn Elliott.
           </p>
           <p className="text-sm text-brand-earth-500">
             This project is open source.{" "}

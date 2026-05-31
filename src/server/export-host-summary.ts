@@ -490,7 +490,7 @@ export async function renderHostSummaryPdf({
         .font("Helvetica")
         .fontSize(9)
         .fillColor(COLORS.gray600)
-        .text(`${c.giverName} → ${c.receiverName}`, 66, cardY + 26);
+        .text(`${c.giverName} -> ${c.receiverName}`, 66, cardY + 26);
 
       let detailY = cardY + 40;
       if (c.itemDetails) {
